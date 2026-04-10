@@ -50,6 +50,11 @@ Walk through each step **one question at a time**. Challenge weak answers.
 1. **Title + workflow** — Short imperative title. Guide workflow choice:
    - Research / spike / exploration -> `universal`
    - Refactor / feature / bugfix -> `feature-build`
+   - Feature with local Ollama execution -> `feature-build-local`
+   - Feature with Opus planning + local loop execution -> `feature-build-hybrid`
+   For hybrid: task must be decomposable into independent steps with clear
+   acceptance criteria. The plan-writer will produce PLAN.md with `## Step N`
+   headings, each with contracts, tests, and a quality wishlist.
 
 2. **Goal** — One paragraph describing the *outcome*, not the steps. Reject
    vague words: "improve", "clean up", "better", "enhance" need a measurable

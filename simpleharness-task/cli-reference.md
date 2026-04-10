@@ -30,7 +30,8 @@ simpleharness new "<title>" [--workflow=<name>] [--worksite PATH]
 ```
 
 - `title` — Short imperative title (e.g., "Add retry logic to API client")
-- `--workflow` — `universal` (default) or `feature-build`
+- `--workflow` — `universal` (default), `feature-build`, `feature-build-local`,
+  or `feature-build-hybrid`
 - Creates `simpleharness/tasks/NNN-<slug>/` with template `TASK.md` and `STATE.md`
 - **You must overwrite TASK.md** with the fully populated content after scaffolding
 
@@ -135,15 +136,59 @@ Structured 5-phase pipeline:
 
 Best for features, refactors, and bugfixes where a spec-driven approach fits.
 
+### `feature-build-local`
+
+Same as `feature-build` but uses a **local-worker** role (Ollama/Qwen3.5)
+instead of developer for implementation. Good for cost-sensitive work or
+benchmarking local models.
+
+### `feature-build-hybrid`
+
+Two-tier workflow: Opus handles planning, local Ollama models execute in a
+**quality-gated loop**:
+
+1. **project-leader** — kickoff
+2. **brainstormer** — explores requirements
+3. **plan-writer** — produces PLAN.md with numbered steps (uses
+   `hybrid-plan-writer` skill). Each step has interface contracts, acceptance
+   criteria, and a quality wishlist.
+4. **loop** (local-builder → local-reviewer → local-critic):
+   - **local-builder** implements one step from PLAN.md
+   - **local-reviewer** runs tests, writes `REVIEW.md` with `verdict: pass|fail`
+   - **local-critic** checks quality wishlist, writes `CRITIQUE.md` with
+     `verdict: approved|suggestions`
+   - On review fail → builder retries (up to `max_cycles`, default 5)
+   - On critique suggestions → builder applies them (up to `max_critic_rounds`,
+     default 2)
+   - On step complete → advances to next step
+   - After all steps → e2e test run → loop done
+   - Steps that exhaust retries are flagged for project-leader review
+5. **project-leader** — final review, handles flagged steps, wrap-up
+
+Best for: feature work where you want local models doing the bulk of
+implementation with automated quality gates. Requires Ollama running locally
+with a model like `qwen3.5-nothink`.
+
+**PLAN.md format for hybrid workflow:**
+Each step must have:
+- `## Step N` heading (harness counts these to set `total_steps`)
+- Interface contracts and function signatures
+- Acceptance criteria (specific test names/assertions)
+- Quality wishlist (FP patterns, complexity targets)
+
 ## Available Roles
 
-| Role | Purpose |
-|------|---------|
-| `project-leader` | Orchestrates: kickoff, review, wrap-up, dispatches other roles |
-| `brainstormer` | Explores requirements, asks questions, identifies risks |
-| `plan-writer` | Produces implementation plans from briefs |
-| `developer` | Implements code, runs tests, commits |
-| `approver` | PreToolUse hook reviewer (approver permission mode only) |
+| Role | Provider | Purpose |
+|------|----------|---------|
+| `project-leader` | Claude | Orchestrates: kickoff, review, wrap-up, dispatches other roles |
+| `brainstormer` | Claude | Explores requirements, asks questions, identifies risks |
+| `plan-writer` | Claude | Produces implementation plans from briefs |
+| `developer` | Claude | Implements code, runs tests, commits |
+| `local-builder` | Ollama | Implements one plan step in the hybrid loop |
+| `local-reviewer` | Ollama | Pass/fail review against acceptance criteria, writes REVIEW.md |
+| `local-critic` | Ollama | Quality critique against wishlist, writes CRITIQUE.md |
+| `local-worker` | Ollama | General local implementation (feature-build-local workflow) |
+| `approver` | Claude | PreToolUse hook reviewer (approver permission mode only) |
 
 ## TASK.md Schema
 
@@ -231,6 +276,13 @@ understanding the fields helps when checking task status:
 | `session_cap` | int (default 20) | Max sessions before blocking |
 | `blocked_reason` | string or empty | Why the task is blocked |
 | `no_progress_ticks` | int | Consecutive ticks with no STATE.md changes |
+| `loop_state` | dict or empty | Loop phase tracking (hybrid workflow only) |
+| `loop_state.current_step` | int | 0-indexed step in PLAN.md |
+| `loop_state.total_steps` | int | Total `## Step` headings in PLAN.md |
+| `loop_state.cycle` | int | Review retry count for current step |
+| `loop_state.critic_rounds` | int | Critic suggestion rounds for current step |
+| `loop_state.inner_phase` | string | `building`, `reviewing`, `critiquing`, `e2e_testing`, `done` |
+| `loop_state.flagged_steps` | list[int] | Steps that exhausted retries |
 
 ## Common Agent Workflows
 
@@ -265,7 +317,22 @@ simpleharness doctor
 
 | Task type | Workflow | Why |
 |-----------|----------|-----|
-| Feature / bugfix / refactor | `feature-build` | Structured phases ensure spec → plan → implement → review |
-| Research / spike / exploration | `universal` | Project-leader dispatches dynamically; no fixed phases |
-| Small / trivial fix | `universal` | Full 5-phase pipeline would be overkill |
+| Feature / bugfix / refactor | `feature-build` | Structured phases: spec → plan → implement → review |
+| Feature with local models | `feature-build-hybrid` | Opus plans, local models execute in quality loop |
+| Cost-sensitive implementation | `feature-build-local` | All implementation on local Ollama |
+| Research / spike / exploration | `universal` | Project-leader dispatches dynamically |
+| Small / trivial fix | `universal` | Full pipeline would be overkill |
 | Unclear scope | `universal` | Project-leader can pivot freely |
+
+### When to use `feature-build-hybrid`
+
+Choose hybrid when:
+- The task is well-specifiable (clear acceptance criteria per step)
+- You want to minimize Opus API cost (Opus only plans + reviews)
+- You have Ollama running locally with a capable model
+- The work is decomposable into independent implementation steps
+
+Avoid hybrid when:
+- The task requires creative architectural decisions throughout
+- Steps have heavy inter-dependencies that need judgment
+- The local model struggles with the project's language/framework
