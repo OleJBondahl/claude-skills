@@ -195,3 +195,7 @@ Never chain with `&&` / `;` at the Bash tool level — a hook blocks it. (Inside
 - A Fastify handler longer than ~30 lines
 - A core function that takes a `FastifyRequest`, a `Pool`, or a `Logger`
 - `dependency-cruiser` warnings about layer violations — fix the import, don't suppress the warning
+
+## After Implementing a Feature
+
+After a substantive feature commit (anything that adds a new module, component, or non-trivial behavior), dispatch the `code-simplifier:code-simplifier` subagent on the changed files before moving on. It catches over-abstraction, single-use helpers, redundant logic, and TS/React idiom drift that the write-time "Simplicity first" rule didn't prevent. Skip for one-line fixes, doc/config edits, and pure refactors.
