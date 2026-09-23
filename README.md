@@ -21,13 +21,6 @@ cp -r claude-skills/doc-writer ~/.claude/skills/doc-writer
 
 ## Skills catalog
 
-### Agent orchestration
-
-| Skill | Description |
-|---|---|
-| [haiku-delegate](haiku-delegate/) | Delegate mechanical tasks to haiku model to preserve context |
-| [expert-panel](expert-panel/) | Evaluate complex decisions with adversarial multi-agent panel |
-
 ### Documentation and writing
 
 | Skill | Description |
