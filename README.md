@@ -45,16 +45,6 @@ cp -r claude-skills/doc-writer ~/.claude/skills/doc-writer
 | [typescript-coding-and-tooling](typescript-coding-and-tooling/) | TS repos with strict tsconfig, ESLint, Vitest, neverthrow |
 | [skidl](skidl/) | SKiDL code and KiCad netlists from Python |
 
-### Codebase knowledge graph
-
-| Skill | Description |
-|---|---|
-| [codebase-memory-exploring](codebase-memory-exploring/) | Search and explore code via knowledge graph |
-| [codebase-memory-quality](codebase-memory-quality/) | Find dead code, unused functions, and complexity hotspots |
-| [codebase-memory-reference](codebase-memory-reference/) | MCP reference guide for graph queries and Cypher syntax |
-| [codebase-memory-tracing](codebase-memory-tracing/) | Trace call chains and dependencies for impact analysis |
-| [updating-memory](updating-memory/) | Keep MCP memory server current when code changes |
-
 ## License
 
 MIT
