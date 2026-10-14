@@ -19,6 +19,7 @@ Opinionated baseline for Python projects in this user's ecosystem. Applies the g
 | Linter + formatter | `ruff` | One tool does both. No `black`, no `flake8`, no `isort`. |
 | Type checker | `ty` | Astral's type checker. Not `mypy`, not `pyright`. ty honours `# ty: ignore[<rule>]` (its native syntax), NOT legacy `# type: ignore[<rule>]`. |
 | Tests | `pytest` | With `pytest-cov` for coverage. |
+| Parallel tests | `pytest-xdist` | Always. Every suite runs in parallel (`-n` in `addopts`), as every run uses `uv`. Shared builds come first (Testing Notes). |
 | Property tests | `hypothesis` | When the input space is large enough that example tests can't cover it. |
 | Mutation tests | `mutmut` | Periodic kill-rate runs on hot modules. |
 | Dead-code | `vulture` | Advisory pre-commit hook (`--min-confidence 80`). Catches unused module-level functions/classes that ruff F doesn't. |
@@ -122,7 +123,7 @@ requires-python = ">=3.14"
 dependencies = ["deal"]
 
 [dependency-groups]
-dev = ["pytest", "pytest-cov", "ruff", "ty", "vulture"]
+dev = ["pytest", "pytest-cov", "pytest-xdist", "ruff", "ty", "vulture"]
 
 [tool.ruff]
 line-length = 100
@@ -152,7 +153,7 @@ convention = "google"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -n auto --dist loadfile"  # fixed -n when workers need much memory; loadgroup once grouped
 ```
 
 The `select` list above is the bar for an established project. For a fresh repo, it's fine to start with a smaller set and grow — but always use `select`, never `extend-select` only, so the rule list is explicit.
@@ -213,8 +214,9 @@ def run_price_update(input_path: Path, output_path: Path) -> None:
 uv sync                              # install + lock
 uv add <pkg>                         # add runtime dep
 uv add --dev <pkg>                   # add dev dep
-uv run pytest                        # run tests
-uv run pytest --cov=src              # tests with coverage
+uv run pytest                        # run tests, in parallel (-n from addopts)
+uv run pytest -n 0 tests/test_x.py   # one file, serial (debugging, pdb)
+uv run pytest --cov=src              # tests with coverage (pytest-cov works with xdist)
 uv run ruff check .                  # lint
 uv run ruff format .                 # format
 uv run ty check                      # type check
@@ -239,6 +241,11 @@ uv run python -m <package>           # run a module
 - **Core tests are deterministic unit tests.** No mocks, no fixtures that touch the network or filesystem. Feed pure inputs, assert on returned values.
 - **Shell tests are integration tests.** Use real tmp dirs (`tmp_path` fixture), real subprocesses where feasible. Mock only external services you don't own.
 - **Never mock a pure function** — if a core function is hard to use in a test, it's not actually pure or not actually small enough.
+- **Share expensive builds, as long as quality holds. One build matters more than parallel runs.** An object that is slow to make (a full build, a parsed corpus, a rendered document) is made once per session in a `@pytest.fixture(scope="session")` in `conftest.py`, and every test that only reads it shares it. Keep it in process memory unless it is too heavy, rather than writing it to disk and reading it back: tests assert on in-memory results, and a test writes files only when the files are what it checks. Under xdist each worker makes it once. To make it only once overall, mark the tests that share it with `@pytest.mark.xdist_group("<build>")` and run `--dist loadgroup`. Until the suite is grouped, use `--dist loadfile`, so a module fixture stays on one worker. Quality rules:
+  - A test that changes the object, or needs a different input, builds its own copy.
+  - Share only objects that cannot change: deeply frozen ones, or ones checked unchanged at session teardown (compare a hash of their serialized form or bytes, as for shared written files), so a test that mutates one fails the run. Never share a mutable builder or draft.
+  - Every test writes only under its own `tmp_path` (a session fixture under `tmp_path_factory`), never into the repository tree, so parallel workers never collide.
+  - Sharing never removes or weakens a test: the collected test IDs are the same before and after the change.
 
 ## Red Flags
 
